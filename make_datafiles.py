@@ -6,7 +6,6 @@ import subprocess
 import collections
 import tensorflow as tf
 from tensorflow.core.example import example_pb2
-import pdb
 
 dm_single_close_quote = u'\u2019' # unicode
 dm_double_close_quote = u'\u201d'
@@ -180,7 +179,6 @@ def write_to_bin(url_file, out_file, makevocab=False):
       article, abstract = get_art_abs(story_file)
 
       # Write to tf.Example
-      pdb.set_trace()
       tf_example = example_pb2.Example()
       tf_example.features.feature['article'].bytes_list.value.extend([article])
       tf_example.features.feature['abstract'].bytes_list.value.extend([abstract])
