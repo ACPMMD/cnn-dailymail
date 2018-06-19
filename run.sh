@@ -1,0 +1,1 @@
+python make_datafiles.py ./cnn/stories ./dailymail/stories
