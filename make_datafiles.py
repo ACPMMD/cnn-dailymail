@@ -4,6 +4,7 @@ import hashlib
 import struct
 import subprocess
 import collections
+import time
 import tensorflow as tf
 from tensorflow.core.example import example_pb2
 
@@ -21,12 +22,18 @@ all_test_urls = "url_lists/all_test.txt"
 
 cnn_tokenized_stories_dir = "cnn_stories_tokenized"
 dm_tokenized_stories_dir = "dm_stories_tokenized"
+cnn_parsed_stories_dir = "cnn_stories_parsed"
+dm_parsed_stories_dir = "dm_stories_parsed"
+cnn_preproccessed_stories_dir = "cnn_stories_preproccessed"
+dm_preproccessed_stories_dir = "dm_stories_preproccessed"
 finished_files_dir = "finished_files"
 chunks_dir = os.path.join(finished_files_dir, "chunked")
 
 # These are the number of .story files we expect there to be in cnn_stories_dir and dm_stories_dir
-num_expected_cnn_stories = 92579
-num_expected_dm_stories = 219506
+#num_expected_cnn_stories = 92579
+#num_expected_dm_stories = 219506
+num_expected_cnn_stories = 1
+num_expected_dm_stories = 1
 
 VOCAB_SIZE = 200000
 CHUNK_SIZE = 1000 # num examples per chunk, for the chunked data
@@ -85,6 +92,46 @@ def tokenize_stories(stories_dir, tokenized_stories_dir):
     raise Exception("The tokenized stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during tokenization?" % (tokenized_stories_dir, num_tokenized, stories_dir, num_orig))
   print "Successfully finished tokenizing %s to %s.\n" % (stories_dir, tokenized_stories_dir)
 
+def parsing_stories(tokenized_stories_dir, parsed_stories_dir):
+  """Maps a whole directory of .story files to a parsed version using BerkeleyParser-1.7"""
+  print "Preparing to tokenize %s to %s..." % (tokenized_stories_dir, parsed_stories_dir)
+  stories = os.listdir(tokenized_stories_dir)
+  # make IO list file
+  print "Making list of files to parse..."
+  for s in stories:
+    command = ['java', '-mx5g', '-jar', 'BerkeleyParser-1.7.jar', '-gr','eng_sm6.gr','-inputFile','./'+tokenized_stories_dir+'/'+s,'-outputFile','./'+parsed_stories_dir+'/'+s]
+    subprocess.call(command)
+  print "Parsing %i files in %s and saving in %s..." % (len(stories), tokenized_stories_dir, parsed_stories_dir)
+  print "BerkeleyParser-1.7 has finished."
+
+  # Check that the tokenized stories directory contains the same number of files as the original directory
+  num_tokenized = len(os.listdir(tokenized_stories_dir))
+  num_parsed = len(os.listdir(parsed_stories_dir))
+  if num_tokenized != num_parsed:
+    raise Exception("The parsed stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during parsing?" % (parsed_stories_dir, num_parsed, tokenized_stories_dir, num_tokenized))
+  print "Successfully finished parsing %s to %s.\n" % (tokenized_stories_dir, parsed_stories_dir)
+
+def preproccess_stories(parsed_stories_dir, preproccessed_stories_dir):
+  """Maps a whole directory of .story files to a parsed version using BerkeleyParser-1.7"""
+  print "Preparing to tokenize %s to %s..." % (parsed_stories_dir, preproccessed_stories_dir)
+  stories = os.listdir(parsed_stories_dir)
+  # make IO list file
+  print "Making list of files to parse..."
+  for s in stories:
+    f_r = open('./'+parsed_stories_dir+'/'+s, "r")
+    f_w = open('./'+preproccessed_stories_dir+'/'+s,'w')
+    for line in f_r.readlines():
+        line = line.strip().replace("(","").replace(")","").strip()
+        f_w.write(line+'\n')
+  print "Parsing %i files in %s and saving in %s..." % (len(stories), parsed_stories_dir, preproccessed_stories_dir)
+  print "BerkeleyParser-1.7 has finished."
+
+  # Check that the tokenized stories directory contains the same number of files as the original directory
+  num_parsed = len(os.listdir(parsed_stories_dir))
+  num_preproccessed = len(os.listdir(preproccessed_stories_dir))
+  if num_parsed != num_preproccessed:
+    raise Exception("The parsed stories directory %s contains %i files, but it should contain the same number as %s (which has %i files). Was there an error during parsing?" % (preproccessed_stories_dir, num_preproccessed, parsed_stories_dir, num_parsed))
+  print "Successfully finished parsing %s to %s.\n" % (parsed_stories_dir, preproccessed_stories_dir)
 
 def read_text_file(text_file):
   lines = []
@@ -162,18 +209,18 @@ def write_to_bin(url_file, out_file, makevocab=False):
       if idx % 1000 == 0:
         print "Writing story %i of %i; %.2f percent done" % (idx, num_stories, float(idx)*100.0/float(num_stories))
 
-      # Look in the tokenized story dirs to find the .story file corresponding to this url
-      if os.path.isfile(os.path.join(cnn_tokenized_stories_dir, s)):
-        story_file = os.path.join(cnn_tokenized_stories_dir, s)
-      elif os.path.isfile(os.path.join(dm_tokenized_stories_dir, s)):
-        story_file = os.path.join(dm_tokenized_stories_dir, s)
+      # Look in the preproccessed story dirs to find the .story file corresponding to this url
+      if os.path.isfile(os.path.join(cnn_preproccessed_stories_dir, s)):
+        story_file = os.path.join(cnn_preproccessed_stories_dir, s)
+      elif os.path.isfile(os.path.join(dm_preproccessedd_stories_dir, s)):
+        story_file = os.path.join(dm_preproccessed_stories_dir, s)
       else:
-        print "Error: Couldn't find tokenized story file %s in either tokenized story directories %s and %s. Was there an error during tokenization?" % (s, cnn_tokenized_stories_dir, dm_tokenized_stories_dir)
+        print "Error: Couldn't find tokenized story file %s in either tokenized story directories %s and %s. Was there an error during tokenization?" % (s, cnn_preproccessed_stories_dir, dm_preproccessed_stories_dir)
         # Check again if tokenized stories directories contain correct number of files
-        print "Checking that the tokenized stories directories %s and %s contain correct number of files..." % (cnn_tokenized_stories_dir, dm_tokenized_stories_dir)
-        check_num_stories(cnn_tokenized_stories_dir, num_expected_cnn_stories)
-        check_num_stories(dm_tokenized_stories_dir, num_expected_dm_stories)
-        raise Exception("Tokenized stories directories %s and %s contain correct number of files but story file %s found in neither." % (cnn_tokenized_stories_dir, dm_tokenized_stories_dir, s))
+        print "Checking that the tokenized stories directories %s and %s contain correct number of files..." % (cnn_preproccessed_stories_dir, dm_preproccessed_stories_dir)
+        check_num_stories(cnn_preproccessed_stories_dir, num_expected_cnn_stories)
+        check_num_stories(dm_preproccessed_stories_dir, num_expected_dm_stories)
+        raise Exception("Parsed stories directories %s and %s contain correct number of files but story file %s found in neither." % (cnn_preproccessed_stories_dir, dm_preproccessed_stories_dir, s))
 
       # Get the strings to write to .bin file
       article, abstract = get_art_abs(story_file)
@@ -215,6 +262,8 @@ def check_num_stories(stories_dir, num_expected):
 
 
 if __name__ == '__main__':
+  start = time.clock()
+  print('start time: %s Seconds'%(start))
   if len(sys.argv) != 3:
     print "USAGE: python make_datafiles.py <cnn_stories_dir> <dailymail_stories_dir>"
     sys.exit()
@@ -228,16 +277,32 @@ if __name__ == '__main__':
   # Create some new directories
   if not os.path.exists(cnn_tokenized_stories_dir): os.makedirs(cnn_tokenized_stories_dir)
   if not os.path.exists(dm_tokenized_stories_dir): os.makedirs(dm_tokenized_stories_dir)
+  if not os.path.exists(cnn_parsed_stories_dir): os.makedirs(cnn_parsed_stories_dir)
+  if not os.path.exists(dm_parsed_stories_dir): os.makedirs(dm_parsed_stories_dir)
+  if not os.path.exists(cnn_preproccessed_stories_dir): os.makedirs(cnn_preproccessed_stories_dir)
+  if not os.path.exists(dm_preproccessed_stories_dir): os.makedirs(dm_preproccessed_stories_dir)
   if not os.path.exists(finished_files_dir): os.makedirs(finished_files_dir)
 
   # Run stanford tokenizer on both stories dirs, outputting to tokenized stories directories
   tokenize_stories(cnn_stories_dir, cnn_tokenized_stories_dir)
   tokenize_stories(dm_stories_dir, dm_tokenized_stories_dir)
 
+  # Run BerkeleyParser-1.7 tokenizer on both tokenized stories directories, outputting to parsed stories directories
+  parsing_stories(cnn_tokenized_stories_dir, cnn_parsed_stories_dir)
+  parsing_stories(dm_tokenized_stories_dir, dm_parsed_stories_dir)
+
+  # Run Preproccess on both parsed stories directories, outputting to preproccessed stories directories
+  preproccess_stories(cnn_parsed_stories_dir, cnn_preproccessed_stories_dir)
+  preproccess_stories(dm_parsed_stories_dir, dm_preproccessed_stories_dir)
+
   # Read the tokenized stories, do a little postprocessing then write to bin files
   write_to_bin(all_test_urls, os.path.join(finished_files_dir, "test.bin"))
-  write_to_bin(all_val_urls, os.path.join(finished_files_dir, "val.bin"))
-  write_to_bin(all_train_urls, os.path.join(finished_files_dir, "train.bin"), makevocab=True)
+  # write_to_bin(all_val_urls, os.path.join(finished_files_dir, "val.bin"))
+  # write_to_bin(all_train_urls, os.path.join(finished_files_dir, "train.bin"), makevocab=True)
 
   # Chunk the data. This splits each of train.bin, val.bin and test.bin into smaller chunks, each containing e.g. 1000 examples, and saves them in finished_files/chunks
-  chunk_all()
+  # chunk_all()
+
+  end = time.clock()
+  print('end time: %s Seconds'%(end))
+  print('Running time: %s Seconds'%(end-start)) #end-start is the time the program is running, in seconds.
